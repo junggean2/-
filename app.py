@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from streamlit_gsheets import GSheetsConnection
+from google.oauth2.service_account import Credentials
 
 # 1. 웹 페이지 기본 설정 및 고가시성 테마 정의 (다크모드 완벽 대응)
 st.set_page_config(page_title="설비 정비 이력 관리 시스템", layout="wide")
@@ -16,21 +16,44 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. 클라우드 구글 스프레드시트 실시간 연동 (ttl=0 강제 새로고침)
+# =========================================================================
+# [🔑 필수 입력 구역] 다운로드받은 구글 JSON 메모장 파일의 내용을 아래에 정확히 기입하세요.
+# =========================================================================
+service_account_dict = {
+  "type": "service_account",
+  "project_id": "carbide-ratio-500307-h9",
+  "private_key_id": "2e2d65a5f566e2fa658311a93076d5e14fc1463f",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC4OHAzbW1aQW/u\nTBBxVCjcPicZUr4h/f8epBz1xWBWi4S5VLj/obnNWwjwQWWBltGzPy8J7DAihhSk\nBnnPcrIr8ovvqoCtGywCCHUzjQCl2CjDpoJNQtkS0KmXRYoUpDnXgeRcYR+M4Ckz\nE0gcN4NIht3+eiT76IfBxatUyIHOLCi0ikZiqTJJkRFG0kaCjSGoLnxUbwsLdBeD\nDpZa7AWavsxWc69Y767yDblwTz426XBaUl/z9BmhKKr169yrUqwshxMNsgMT1MSA\nvC+jq0TyMAUeF+eGXzXyXAH/iqlIy+Y613mRjnXMvZLHHavwRXcZ8enCUrNpah5w\nziKqAWNbAgMBAAECggEACltd73488iCQruiG2iA9pdg2sYVF3Dpf7/SRDj45AtSY\nMyUwu2p3vDRchclfcBAvHPE170xgjmhUW75jdcbAfpkFxgUjc9f9uuWH1UydlzVW\nYV2IoNhbxOOHTVJjB3MOL3AFiy4IrI5jspPob3Gth1PRwj9SufjiPQIkdkFJjvIz\nBvoL0qmp7Gkd+wu90kAyOWWtrrPLBczU0dpp8yEAKMLToYya/krX5aOqljZK2Ou3\nTJ74P9WVl7/hPFlOQD63YdcQMo3IP9nJO1E/65FIVGFvNRi+2r66jg8E+XFyuE9J\nKlXgp8inGckwMcaCz3tOenF0SeSY6zKxpwfsf4E7GQKBgQD0XDXMwC/xsRh/yMc2\nVRj4KWr8hixuzPzxhf+1IUBJKY7EDQH/d0LbEdG7Xa4AHmh3NT8d6yyL/a/qzCHy\nRNcCzD/Bm1HgQgqS3Ez46OpvZhlDWu9JzODud8dTfx7OKKqfkUYtaGrfVy3Ajr0y\n5X0Ua+eE4rf/W07UWEg4y70NmQKBgQDA/t56El9dbLr22kws6H5O1ZYE1XzjfVIJ\noLPf1SvNjQP0Y7DyI1hlXmf1MBAp5Zrop5M/5N6pGEUX1NijdRxlNkgUb1rD1Ku4\nmbxa6Bwah5+yRB4GFacup4eDSZtVme2wTHYG8nisoLBfwQe9lbwxyHuGylntE+9j\nZ90/itcJEwKBgQDnN4lAoGm9TFFeOGEnrAXga3BsWZkZjqWY864tebUWhVgtchF9\n5R9Bou7NV6sZOaynf56ldK3GGNmoVleYokLAxvtc+tbSWCshI4tBy0Jo/jbRYO4i\n6tW7T2MwQoynjhtEuXWp6a+WfSsxlN65liRwelmrh8uKuJ8ylgZgl4ffoQKBgGcE\nJHD4eZr+vNWjNGIMP8+IxqkR47XyYOXut9TUjqsLiH7c78hwAXEqcUc5Pod+na9u\nM3U5j3inEcpkvLaTfnKwBM2TmtlJHdhNh3LmzomCt0WKgpQw3qpSlk0H7zhED9G5\nHo8awjszErIp8R3LXUcdgoIyZMndiDyBZmHSlHGtAoGAR25u0meuNYfIoV1eW+nO\nnffVdHu+3TxtYdwONe3B9K8kkyytFNyO6Q2NlT/2nvIdUN8CbWylmnmHLje+7aQk\nnbJyyUbDknQqYB8KXEqVUasu8v1BxoqRld+yk94lpj4GStaCOQsCTsO6sxS82OAW\nQSIBwXtu/aICnPgC/SQa/rs=\n-----END PRIVATE KEY-----\n",
+  "client_email": "streamlit-db@carbide-ratio-500307-h9.iam.gserviceaccount.com",
+  "client_id": "109317306139225964001",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-db%40carbide-ratio-500307-h9.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+
+# =========================================================================
+
+# 2. 표준 구글 크레덴셜 직접 빌드 (Streamlit의 버그를 우회하는 다이렉트 통신 방식)
 try:
     st.cache_data.clear()
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(service_account_dict, scopes=scopes)
+    
+    # 생성된 다이렉트 인증서(creds)를 연결 엔진에 강제 주입
+    conn = st.connection("gsheets", type=GSheetsConnection, credentials=creds)
     spreadsheet_url = "https://docs.google.com/spreadsheets/d/1HekCxNYxt05v2V-sldwXcdBJHwNGzzwJddpPfvSa_Mk/edit?usp=sharing"
     df = conn.read(spreadsheet=spreadsheet_url, ttl=0)
 except Exception as e:
-    st.error(f"클라우드 데이터베이스 연결 실패: {e}")
+    st.error(f"클라우드 데이터베이스 안전 인증 연결 실패: {e}")
     st.stop()
 
 if df.empty:
     st.warning("데이터베이스에 표시할 데이터가 없습니다.")
     st.stop()
 
-# 데이터 타입 무결성 정제
+# 데이터 타입 무결성 정제 및 가공
 df["부동시간[Hr]"] = pd.to_numeric(df["부동시간[Hr]"], errors='coerce').fillna(0.0)
 df["소요비용[천원]"] = pd.to_numeric(df["소요비용[천원]"], errors='coerce').fillna(0)
 df["설비명"] = df["설비명"].fillna("미지정 설비").astype(str).str.strip()
@@ -79,7 +102,7 @@ with col3:
 
 st.markdown("---")
 
-# 5. 📊 특수문자 버그를 해결한 고해상도 Plotly 비교분석 차트
+# 5. 📊 특수문자 버그를 완전히 해결한 대조 차트 빌드
 st.subheader("📊 필터 기준 설비별 부동시간 분석 (비교분석 모드)")
 
 if not filtered_df.empty:
@@ -87,26 +110,9 @@ if not filtered_df.empty:
     chart_pivot = chart_data[chart_data["부동시간[Hr]"] > 0]
     
     if not chart_pivot.empty:
-        # 다크모드 전용 선명한 하늘색(#38bdf8) 테마 바 차트 빌드
-        fig = px.bar(
-            chart_pivot, 
-            x="설비명", 
-            y="부동시간[Hr]",
-            template="plotly_dark",
-            text="부동시간[Hr]"
-        )
-        fig.update_traces(
-            marker_color="#38bdf8", 
-            texttemplate='%{text}Hr', 
-            textposition='outside'
-        )
-        fig.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=10, r=10, t=10, b=10)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("💡 그래프 기둥에 마우스 커서를 올리면 상세 수치 팝업 툴팁이 작동합니다.")
+        # 가시성이 확보된 다크모드 대응 차트 (마우스 커서 오버 시 수치 기본 팝업됨)
+        st.bar_chart(data=chart_pivot, x="설비명", y="부동시간[Hr]", color="#38bdf8", height=400)
+        st.caption("💡 그래프 기둥에 마우스 커서를 올리면 해당 설비의 정확한 수치 데이터가 즉시 팝업됩니다.")
     else:
         st.info("선택된 필터 조건 내에 부동시간(Hr)이 발생한 설비가 없어 차트를 비워둡니다.")
 else:
@@ -168,7 +174,6 @@ if is_admin:
             with st.form("edit_form"):
                 st.info(f"선택한 번호 [{edit_index}]의 데이터가 로드되었습니다.")
                 
-                # 가독성 분리 가공 (글자 잘림 현상 원천 차단)
                 val_공정 = row_to_edit["공정"] if row_to_edit["공정"] in ["파쇄", "선광", "채광", "제련"] else "파쇄"
                 val_세부 = str(row_to_edit["세부공정"]) if pd.notna(row_to_edit["세부공정"]) else ""
                 val_설비명 = str(row_to_edit["설비명"])
@@ -184,7 +189,6 @@ if is_admin:
                 try: val_일자 = pd.to_datetime(row_to_edit["정비일자"]).date()
                 except: val_일자 = pd.Timestamp.now().date()
                 
-                # 컴포넌트 렌더링
                 ec1, ec2, ec3, ec4 = st.columns(4)
                 edit_공정 = ec1.selectbox("공정", ["파쇄", "선광", "채광", "제련"], index=["파쇄", "선광", "채광", "제련"].index(val_공정))
                 edit_세부 = ec2.text_input("세부공정", value=val_세부)
