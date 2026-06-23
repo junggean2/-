@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-from streamlit_chartjs import st_chartjs
 from streamlit_gsheets import GSheetsConnection
 
-# 1. 웹 페이지 기본 설정 및 디자인 테마 정의
+# 1. 웹 페이지 기본 설정 및 고가시성 테마 정의
 st.set_page_config(page_title="설비 정비 이력 관리 시스템", layout="wide")
 
 st.markdown("""
@@ -28,7 +27,7 @@ if df.empty:
     st.warning("데이터베이스에 표시할 데이터가 없습니다.")
     st.stop()
 
-# 데이터 타입 강제 정제 및 누락 데이터 보정
+# 데이터 타입 정제 및 문자열/누락 데이터 보정
 df["부동시간[Hr]"] = pd.to_numeric(df["부동시간[Hr]"], errors='coerce').fillna(0)
 df["소요비용[천원]"] = pd.to_numeric(df["소요비용[천원]"], errors='coerce').fillna(0)
 df["설비명"] = df["설비명"].fillna("미지정 설비")
@@ -58,7 +57,7 @@ if selected_process != "전체":
     filtered_df = filtered_df[filtered_df["공정"] == selected_process]
 filtered_df = filtered_df[filtered_df["부동시간[Hr]"] >= selected_hours]
 
-# 4. 메인 대시보드 스코어보드 (KPI)
+# 4. 메인 대시보드 스코어보드 (KPI 지표)
 st.title("🏭 설비 정비 이력 클라우드 대시보드")
 
 col1, col2, col3 = st.columns(3)
@@ -71,76 +70,41 @@ with col3:
 
 st.markdown("---")
 
-# 5. 📊 Chart.js 기반 비교분석 최적화 차트 빌드
-st.subheader("📊 필터 기준 설비별 부동시간 분석 (Chart.js)")
+# 5. 📊 정돈된 비교분석용 가시성 최적화 차트 (마우스 오버 수치 작동)
+st.subheader("📊 필터 기준 설비별 부동시간 분석 (비교분석 모드)")
 
 if not filtered_df.empty:
-    # 대형 설비 위주 비교분석을 위해 부동시간 기준 내림차순 정렬
-    chart_data = filtered_df.sort_values(by="부동시간[Hr]", ascending=False).head(20)
-    labels = chart_data["설비명"].tolist()
-    values = chart_data["부동시간[Hr]"].tolist()
+    # 한눈에 들어오도록 부동시간이 높은 설비 순으로 내림차순 정렬
+    chart_data = filtered_df.sort_values(by="부동시간[Hr]", ascending=False).head(25)
     
-    # 가시성 확보 및 눈 피로 방지를 위한 단일 차분한 슬레이트 블루 톤
-    chart_config = {
-        "type": "bar",
-        "data": {
-            "labels": labels,
-            "datasets": [{
-                "label": "부동시간 [단위: Hr]",
-                "data": values,
-                "backgroundColor": "rgba(30, 41, 59, 0.8)", # Slate Navy
-                "borderColor": "rgba(30, 41, 59, 1)",
-                "borderWidth": 1,
-                "borderRadius": 4
-            }]
-        },
-        "options": {
-            "responsive": True,
-            "maintainAspectRatio": False,
-            "plugins": {
-                "legend": {"display": True, "labels": {"color": "#0f172a"}},
-                "tooltip": { # 커서를 가져다 대면 나오는 세부 수치 팝업 최적화
-                    "enabled": True,
-                    "backgroundColor": "#0f172a",
-                    "titleColor": "#ffffff",
-                    "bodyColor": "#ffffff",
-                    "padding": 12,
-                    "cornerRadius": 6
-                }
-            },
-            "scales": {
-                "y": {
-                    "beginAtZero": True,
-                    "grid": {"color": "rgba(226, 232, 240, 0.6)"},
-                    "ticks": {"color": "#475569"}
-                },
-                "x": {
-                    "grid": {"display": False},
-                    "ticks": {"color": "#475569", "font": {"size": 11}}
-                }
-            }
-        }
-    }
+    # 차트용 데이터 피벗 (X축: 설비명, Y축: 부동시간)
+    chart_pivot = chart_data.pivot_table(index="설비명", values="부동시간[Hr]", aggfunc="sum")
     
-    # 캔버스 높이 지정하여 가시성 확보
-    st_chartjs(chart_config, height=380)
+    # 알록달록하지 않은 세련된 슬레이트 블랙/네이비 톤 단일 색상 배치
+    st.bar_chart(
+        chart_pivot,
+        y="부동시간[Hr]",
+        color="#1e293b",
+        height=400
+    )
+    st.caption("💡 그래프 기둥에 마우스 커서를 올리면 실시간으로 해당 설비의 정확한 부동시간(Hr) 수치가 팝업됩니다.")
 else:
     st.warning("선택하신 필터 조건에 부합하는 정비 데이터가 없습니다.")
 
 st.markdown("---")
 
-# 6. 실시간 정비 이력 데이터 테이블
+# 6. 실시간 정비 이력 데이터 테이블 (최신 안정화 문법 적용)
 st.subheader("📋 실시간 정비 데이터 테이블")
-st.dataframe(filtered_df, use_container_width=True)
+st.dataframe(filtered_df, width="stretch")
 
-# 7. 관리자 전용 제어 센터 (추가 / 수정 / 삭제)
+# 7. 관리자 전용 제어 센터 (추가 / 수정 / 삭제 탭 메뉴)
 if is_admin:
     st.markdown("---")
     st.subheader("🛠️ 데이터 관리 커맨드 센터 (관리자 인증 완료)")
     
     tab1, tab2, tab3 = st.tabs(["➕ 새 정비 이력 추가", "✏️ 기존 기록 수정", "❌ 기존 기록 삭제"])
     
-    # [추가]
+    # [추가 기능]
     with tab1:
         with st.form("add_form", clear_on_submit=True):
             c1, c2, c3, c4 = st.columns(4)
@@ -174,7 +138,7 @@ if is_admin:
                 st.success("구글 스프레드시트에 실시간 저장이 완료되었습니다!")
                 st.rerun()
                 
-    # [수정]
+    # [수정 기능]
     with tab2:
         if not df.empty:
             edit_index = st.selectbox("수정할 기록 선택", df.index, format_func=lambda x: f"[{x}] {df.iloc[x]['설비명']} ({df.iloc[x]['정비일자']})")
@@ -229,7 +193,7 @@ if is_admin:
                     st.success("기록 데이터 수정이 성공적으로 반영되었습니다!")
                     st.rerun()
 
-    # [삭제]
+    # [삭제 기능]
     with tab3:
         if not df.empty:
             delete_index = st.selectbox("삭제할 이력 선택", df.index, format_func=lambda x: f"[{x}] {df.iloc[x]['설비명']} ({df.iloc[x]['정비일자']})")
