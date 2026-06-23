@@ -1,3 +1,2 @@
-streamlit-chartjs
 st-gsheets-connection
 pandas
