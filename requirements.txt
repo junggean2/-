@@ -1,0 +1,4 @@
+Plaintext
+plotly
+st-gsheets-connection
+pandas
