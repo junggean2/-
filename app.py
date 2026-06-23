@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from streamlit_gsheets import GSheetsConnection
 
-# 1. 웹 페이지 기본 설정 및 다크모드 가시성 스타일 정의
+# 1. 웹 페이지 기본 설정 및 고가시성 테마 정의 (다크모드 완벽 대응)
 st.set_page_config(page_title="설비 정비 이력 관리 시스템", layout="wide")
 
 st.markdown("""
@@ -15,7 +16,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. 클라우드 구글 스프레드시트 실시간 연동 (ttl=0으로 실시간 강제 새로고침)
+# 2. 클라우드 구글 스프레드시트 실시간 연동 (ttl=0 강제 새로고침)
 try:
     st.cache_data.clear()
     conn = st.connection("gsheets", type=GSheetsConnection)
@@ -78,18 +79,34 @@ with col3:
 
 st.markdown("---")
 
-# 5. 📊 가시성이 복구된 설비별 부동시간 분석 차트
+# 5. 📊 특수문자 버그를 해결한 고해상도 Plotly 비교분석 차트
 st.subheader("📊 필터 기준 설비별 부동시간 분석 (비교분석 모드)")
 
 if not filtered_df.empty:
-    # 차트 가시성을 높이기 위해 부동시간 상위 20개 정렬 및 피벗 처리
     chart_data = filtered_df.sort_values(by="부동시간[Hr]", ascending=False).head(20)
     chart_pivot = chart_data[chart_data["부동시간[Hr]"] > 0]
     
     if not chart_pivot.empty:
-        # 내장 고해상도 그래픽 엔진을 사용하여 하늘색(#38bdf8) 바 차트 출력 (마우스 오버 팝업 기본 탑재)
-        st.bar_chart(data=chart_pivot, x="설비명", y="부동시간[Hr]", color="#38bdf8", height=400)
-        st.caption("💡 그래프 기둥에 마우스 커서를 올리면 해당 설비의 정확한 수치 데이터가 실시간 팝업됩니다.")
+        # 다크모드 전용 선명한 하늘색(#38bdf8) 테마 바 차트 빌드
+        fig = px.bar(
+            chart_pivot, 
+            x="설비명", 
+            y="부동시간[Hr]",
+            template="plotly_dark",
+            text="부동시간[Hr]"
+        )
+        fig.update_traces(
+            marker_color="#38bdf8", 
+            texttemplate='%{text}Hr', 
+            textposition='outside'
+        )
+        fig.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=10, r=10, t=10, b=10)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("💡 그래프 기둥에 마우스 커서를 올리면 상세 수치 팝업 툴팁이 작동합니다.")
     else:
         st.info("선택된 필터 조건 내에 부동시간(Hr)이 발생한 설비가 없어 차트를 비워둡니다.")
 else:
@@ -142,7 +159,7 @@ if is_admin:
                 st.success("데이터가 성공적으로 추가되었습니다!")
                 st.rerun()
                 
-    # [수정 기능] -> 한 줄씩 값을 완전히 분리 추출하여 괄호 닫힘 오류 완벽 차단
+    # [수정 기능]
     with tab2:
         if not df.empty:
             edit_index = st.selectbox("수정할 기록 선택", df.index, format_func=lambda x: f"[{x}] {df.iloc[x]['설비명']} ({df.iloc[x]['정비일자']})")
@@ -151,7 +168,7 @@ if is_admin:
             with st.form("edit_form"):
                 st.info(f"선택한 번호 [{edit_index}]의 데이터가 로드되었습니다.")
                 
-                # 안전한 변수 분리 가공 구역
+                # 가독성 분리 가공 (글자 잘림 현상 원천 차단)
                 val_공정 = row_to_edit["공정"] if row_to_edit["공정"] in ["파쇄", "선광", "채광", "제련"] else "파쇄"
                 val_세부 = str(row_to_edit["세부공정"]) if pd.notna(row_to_edit["세부공정"]) else ""
                 val_설비명 = str(row_to_edit["설비명"])
@@ -164,12 +181,10 @@ if is_admin:
                 val_정비자 = str(row_to_edit["정비자"]) if pd.notna(row_to_edit["정비자"]) else ""
                 val_비고 = str(row_to_edit["비고"]) if pd.notna(row_to_edit["비고"]) else ""
                 
-                try:
-                    val_일자 = pd.to_datetime(row_to_edit["정비일자"]).date()
-                except:
-                    val_일자 = pd.Timestamp.now().date()
+                try: val_일자 = pd.to_datetime(row_to_edit["정비일자"]).date()
+                except: val_일자 = pd.Timestamp.now().date()
                 
-                # 입력 컴포넌트 배치 구역
+                # 컴포넌트 렌더링
                 ec1, ec2, ec3, ec4 = st.columns(4)
                 edit_공정 = ec1.selectbox("공정", ["파쇄", "선광", "채광", "제련"], index=["파쇄", "선광", "채광", "제련"].index(val_공정))
                 edit_세부 = ec2.text_input("세부공정", value=val_세부)
