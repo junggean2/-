@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+from streamlit_chartjs import st_chartjs
 from streamlit_gsheets import GSheetsConnection
 
-# 1. 웹 페이지 기본 설정 및 고가시성 테마 적용
+# 1. 웹 페이지 기본 설정 및 디자인 테마 정의
 st.set_page_config(page_title="설비 정비 이력 관리 시스템", layout="wide")
 
 st.markdown("""
@@ -28,19 +28,19 @@ if df.empty:
     st.warning("데이터베이스에 표시할 데이터가 없습니다.")
     st.stop()
 
-# 데이터 타입 강제 정제
+# 데이터 타입 강제 정제 및 누락 데이터 보정
 df["부동시간[Hr]"] = pd.to_numeric(df["부동시간[Hr]"], errors='coerce').fillna(0)
 df["소요비용[천원]"] = pd.to_numeric(df["소요비용[천원]"], errors='coerce').fillna(0)
 df["설비명"] = df["설비명"].fillna("미지정 설비")
 df["공정"] = df["공정"].fillna("기타")
 
-# 3. 사이드바 권한 및 필터 구성
+# 3. 사이드바 권한 분리 및 필터 설정
 st.sidebar.title("🔒 권한 및 필터 제어")
 password = st.sidebar.text_input("관리자 인증 비밀번호", type="password")
 is_admin = (password == "kcc")
 
 if is_admin:
-    st.sidebar.success("⚡ 관리자 권한이 인증되었습니다. (수정/삭제 가능)")
+    st.sidebar.success("⚡ 관리자 권한이 인증되었습니다. (추가/수정/삭제 가능)")
 else:
     st.sidebar.info("👀 [조회 전용] 모드입니다. (관리자 비밀번호 필요)")
 
@@ -58,7 +58,7 @@ if selected_process != "전체":
     filtered_df = filtered_df[filtered_df["공정"] == selected_process]
 filtered_df = filtered_df[filtered_df["부동시간[Hr]"] >= selected_hours]
 
-# 4. 메인 대시보드 화면 구성
+# 4. 메인 대시보드 스코어보드 (KPI)
 st.title("🏭 설비 정비 이력 클라우드 대시보드")
 
 col1, col2, col3 = st.columns(3)
@@ -71,21 +71,59 @@ with col3:
 
 st.markdown("---")
 
-# 5. 그래프 시각화
-st.subheader("📊 필터 기준 설비별 부동시간 분석")
+# 5. 📊 Chart.js 기반 비교분석 최적화 차트 빌드
+st.subheader("📊 필터 기준 설비별 부동시간 분석 (Chart.js)")
+
 if not filtered_df.empty:
-    fig = px.bar(
-        filtered_df, 
-        x="설비명", 
-        y="부동시간[Hr]", 
-        color="공정",
-        text="부동시간[Hr]",
-        hover_data={"설비명": True, "부동시간[Hr]": True, "공정": True},
-        color_discrete_sequence=["#1e293b", "#475569", "#64748b", "#94a3b8"]
-    )
-    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#0f172a"))
-    fig.update_traces(texttemplate='%{text}Hr', textposition='outside')
-    st.plotly_chart(fig, use_container_width=True)
+    # 대형 설비 위주 비교분석을 위해 부동시간 기준 내림차순 정렬
+    chart_data = filtered_df.sort_values(by="부동시간[Hr]", ascending=False).head(20)
+    labels = chart_data["설비명"].tolist()
+    values = chart_data["부동시간[Hr]"].tolist()
+    
+    # 가시성 확보 및 눈 피로 방지를 위한 단일 차분한 슬레이트 블루 톤
+    chart_config = {
+        "type": "bar",
+        "data": {
+            "labels": labels,
+            "datasets": [{
+                "label": "부동시간 [단위: Hr]",
+                "data": values,
+                "backgroundColor": "rgba(30, 41, 59, 0.8)", # Slate Navy
+                "borderColor": "rgba(30, 41, 59, 1)",
+                "borderWidth": 1,
+                "borderRadius": 4
+            }]
+        },
+        "options": {
+            "responsive": True,
+            "maintainAspectRatio": False,
+            "plugins": {
+                "legend": {"display": True, "labels": {"color": "#0f172a"}},
+                "tooltip": { # 커서를 가져다 대면 나오는 세부 수치 팝업 최적화
+                    "enabled": True,
+                    "backgroundColor": "#0f172a",
+                    "titleColor": "#ffffff",
+                    "bodyColor": "#ffffff",
+                    "padding": 12,
+                    "cornerRadius": 6
+                }
+            },
+            "scales": {
+                "y": {
+                    "beginAtZero": True,
+                    "grid": {"color": "rgba(226, 232, 240, 0.6)"},
+                    "ticks": {"color": "#475569"}
+                },
+                "x": {
+                    "grid": {"display": False},
+                    "ticks": {"color": "#475569", "font": {"size": 11}}
+                }
+            }
+        }
+    }
+    
+    # 캔버스 높이 지정하여 가시성 확보
+    st_chartjs(chart_config, height=380)
 else:
     st.warning("선택하신 필터 조건에 부합하는 정비 데이터가 없습니다.")
 
@@ -95,14 +133,14 @@ st.markdown("---")
 st.subheader("📋 실시간 정비 데이터 테이블")
 st.dataframe(filtered_df, use_container_width=True)
 
-# 7. 관리자 전용 제어 기능 (추가 / 수정 / 삭제 3단 탭 구성)
+# 7. 관리자 전용 제어 센터 (추가 / 수정 / 삭제)
 if is_admin:
     st.markdown("---")
     st.subheader("🛠️ 데이터 관리 커맨드 센터 (관리자 인증 완료)")
     
     tab1, tab2, tab3 = st.tabs(["➕ 새 정비 이력 추가", "✏️ 기존 기록 수정", "❌ 기존 기록 삭제"])
     
-    # 탭 1: 추가 기능
+    # [추가]
     with tab1:
         with st.form("add_form", clear_on_submit=True):
             c1, c2, c3, c4 = st.columns(4)
@@ -136,26 +174,23 @@ if is_admin:
                 st.success("구글 스프레드시트에 실시간 저장이 완료되었습니다!")
                 st.rerun()
                 
-    # 탭 2: 수정 기능 (새로 추가됨)
+    # [수정]
     with tab2:
         if not df.empty:
             edit_index = st.selectbox("수정할 기록 선택", df.index, format_func=lambda x: f"[{x}] {df.iloc[x]['설비명']} ({df.iloc[x]['정비일자']})")
             row_to_edit = df.iloc[edit_index]
             
             with st.form("edit_form"):
-                st.info(f"선택한 번호 [{edit_index}]의 기존 내용이 아래에 자동으로 로드되었습니다. 수정 후 저장 버튼을 누르세요.")
+                st.info(f"선택한 번호 [{edit_index}]의 기존 내용이 로드되었습니다.")
                 
                 ec1, ec2, ec3, ec4 = st.columns(4)
-                # 기존 값이 리스트에 없을 경우를 대비한 처리
                 process_options = ["파쇄", "선광", "채광", "제련"]
                 p_idx = process_options.index(row_to_edit["공정"]) if row_to_edit["공정"] in process_options else 0
                 edit_공정 = ec1.selectbox("공정", process_options, index=p_idx)
                 edit_세부 = ec2.text_input("세부공정", value=str(row_to_edit["세부공정"]) if pd.notna(row_to_edit["세부공정"]) else "")
                 
-                try:
-                    default_date = pd.to_datetime(row_to_edit["정비일자"]).date()
-                except:
-                    default_date = pd.Timestamp.now().date()
+                try: default_date = pd.to_datetime(row_to_edit["정비일자"]).date()
+                except: default_date = pd.Timestamp.now().date()
                 edit_일자 = ec3.date_input("정비일자", value=default_date)
                 
                 type_options = ["대", "중", "소"]
@@ -191,15 +226,15 @@ if is_admin:
                     df.loc[edit_index, "비고"] = edit_비고
                     
                     conn.update(spreadsheet=spreadsheet_url, data=df)
-                    st.success("기록 데이터 수정이 완료되었으며 구글 시트에 실시간 반영되었습니다!")
+                    st.success("기록 데이터 수정이 성공적으로 반영되었습니다!")
                     st.rerun()
 
-    # 탭 3: 삭제 기능
+    # [삭제]
     with tab3:
         if not df.empty:
             delete_index = st.selectbox("삭제할 이력 선택", df.index, format_func=lambda x: f"[{x}] {df.iloc[x]['설비명']} ({df.iloc[x]['정비일자']})")
             if st.button("🗑️ 선택한 정비 이력 영구 삭제"):
                 updated_df = df.drop(delete_index).reset_index(drop=True)
                 conn.update(spreadsheet=spreadsheet_url, data=updated_df)
-                st.success("구글 클라우드에서 데이터가 성공적으로 제거되었습니다.")
+                st.success("구글 클라우드에서 데이터가 완벽하게 제거되었습니다.")
                 st.rerun()
