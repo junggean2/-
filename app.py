@@ -28,11 +28,16 @@ if df.empty:
     st.warning("데이터베이스에 표시할 데이터가 없습니다.")
     st.stop()
 
+# [중요] 구글 시트 날짜/타임스탬프 형식 전처리 고도화 (에러 방지)
+if "정비일자" in df.columns:
+    df["정비일자"] = pd.to_datetime(df["정비일자"], errors="coerce").dt.strftime("%Y-%m-%d")
+    df["정비일자"] = df["정비일자"].fillna(pd.Timestamp.now().strftime("%Y-%m-%d"))
+
 # 데이터 타입 강제 정제 및 누락값 제거
 df["부동시간[Hr]"] = pd.to_numeric(df["부동시간[Hr]"], errors='coerce').fillna(0.0)
 df["소요비용[천원]"] = pd.to_numeric(df["소요비용[천원]"], errors='coerce').fillna(0)
-df["설비명"] = df["설비명"].fillna("미지정 설비").astype(str)
-df["공정"] = df["공정"].fillna("기타").astype(str)
+df["설비명"] = df["설비명"].fillna("미지정 설비").astype(str).str.strip()
+df["공정"] = df["공정"].fillna("기타").astype(str).str.strip()
 
 # 3. 사이드바 권한 분리 및 필터 설정
 st.sidebar.title("🔒 권한 및 필터 제어")
