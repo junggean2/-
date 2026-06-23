@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from streamlit_gsheets import GSheetsConnection
+import gspread
 from google.oauth2.service_account import Credentials
 
 # 1. 웹 페이지 기본 설정 및 고가시성 테마 정의 (다크모드 완벽 대응)
@@ -33,19 +33,25 @@ service_account_dict = {
   "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-db%40carbide-ratio-500307-h9.iam.gserviceaccount.com",
   "universe_domain": "googleapis.com"
 }
-
 # =========================================================================
 
-# 2. 구글 서비스 계정 자격증명 객체 생성
+# 2. 버그가 많은 st.connection 대신 gspread 공식 라이브러리로 다이렉트 보안 연결 채널 구축
 try:
     st.cache_data.clear()
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     creds = Credentials.from_service_account_info(service_account_dict, scopes=scopes)
+    client = gspread.authorize(creds)
     
-    # [🔥 버그 해결] 해싱 에러를 예방하기 위해 인자 이름 앞에 언더바(_)를 붙여 _credentials로 전달합니다.
-    conn = st.connection("gsheets", type=GSheetsConnection, _credentials=creds)
-    spreadsheet_url = "https://docs.google.com/spreadsheets/d/1HekCxNYxt05v2V-sldwXcdBJHwNGzzwJddpPfvSa_Mk/edit?usp=sharing"
-    df = conn.read(spreadsheet=spreadsheet_url, ttl=0)
+    # 구글 스프레드시트 고유 ID를 사용하여 직접 시트 열기
+    spreadsheet_id = "1HekCxNYxt05v2V-sldwXcdBJHwNGzzwJddpPfvSa_Mk"
+    sheet = client.open_by_key(spreadsheet_id).sheet1
+    
+    # 실시간 데이터 전체 로드 및 판다스 변환
+    records = sheet.get_all_records()
+    df = pd.DataFrame(records)
 except Exception as e:
     st.error(f"클라우드 데이터베이스 안전 인증 연결 실패: {e}")
     st.stop()
@@ -103,7 +109,7 @@ with col3:
 
 st.markdown("---")
 
-# 5. 📊 오타가 수정된 고해상도 Plotly 비교분석 차트 구역
+# 5. 📊 특수문자 버그를 완전히 해결한 고해상도 Plotly 비교분석 차트
 st.subheader("📊 필터 기준 설비별 부동시간 분석 (비교분석 모드)")
 
 if not filtered_df.empty:
@@ -123,7 +129,6 @@ if not filtered_df.empty:
             texttemplate='%{text}Hr', 
             textposition='outside'
         )
-        # [🛠️ 오타 완벽 수정] 투명 채우기 문자열 문법을 한 줄로 안전하게 마감 처리
         fig.update_layout(
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
@@ -172,15 +177,13 @@ if is_admin:
             add_비고 = st.text_input("비고")
             
             if st.form_submit_button("💾 구글 클라우드 데이터베이스에 즉시 추가 저장"):
-                new_row = pd.DataFrame([{
-                    "공정": add_공정, "세부공정": add_세부, "정비일자": str(add_일자), 
-                    "설비분류": add_분류, "설비명": add_설비명, "마력": add_마력, 
-                    "기동방식": add_기동, "고장현상": add_고장, "조치내역": add_조치, 
-                    "부동시간[Hr]": add_부동, "소요비용[천원]": add_비용, "정비자": add_정비자, "비고": add_비고
-                }])
-                updated_df = pd.concat([df, new_row], ignore_index=True)
-                conn.update(spreadsheet=spreadsheet_url, data=updated_df)
-                st.success("데이터가 성공적으로 추가되었습니다!")
+                new_row = [
+                    add_공정, add_세부, str(add_일자), add_분류, add_설비명, 
+                    add_마력, add_기동, add_고장, add_조치, add_부동, add_비용, add_정비자, add_비고
+                ]
+                # gspread 전용 행 추가 명령 실행
+                sheet.append_row(new_row)
+                st.success("데이터가 구글 시트에 성공적으로 추가되었습니다!")
                 st.rerun()
                 
     # [수정 기능]
@@ -192,7 +195,6 @@ if is_admin:
             with st.form("edit_form"):
                 st.info(f"선택한 번호 [{edit_index}]의 데이터가 로드되었습니다.")
                 
-                # 가독성 분리 가공 구역
                 val_공정 = row_to_edit["공정"] if row_to_edit["공정"] in ["파쇄", "선광", "채광", "제련"] else "파쇄"
                 val_세부 = str(row_to_edit["세부공정"]) if pd.notna(row_to_edit["세부공정"]) else ""
                 val_설비명 = str(row_to_edit["설비명"])
@@ -208,7 +210,6 @@ if is_admin:
                 try: val_일자 = pd.to_datetime(row_to_edit["정비일자"]).date()
                 except: val_일자 = pd.Timestamp.now().date()
                 
-                # 컴포넌트 렌더링 구역
                 ec1, ec2, ec3, ec4 = st.columns(4)
                 edit_공정 = ec1.selectbox("공정", ["파쇄", "선광", "채광", "제련"], index=["파쇄", "선광", "채광", "제련"].index(val_공정))
                 edit_세부 = ec2.text_input("세부공정", value=val_세부)
@@ -232,22 +233,18 @@ if is_admin:
                 edit_비고 = st.text_input("비고", value=val_비고)
                 
                 if st.form_submit_button("✏️ 구글 클라우드에 수정 내용 반영하기"):
-                    df.loc[edit_index, "공정"] = edit_공정
-                    df.loc[edit_index, "세부공정"] = edit_세부
-                    df.loc[edit_index, "정비일자"] = str(edit_일자)
-                    df.loc[edit_index, "설비분류"] = edit_분류
-                    df.loc[edit_index, "설비명"] = edit_설비명
-                    df.loc[edit_index, "마력"] = edit_마력
-                    df.loc[edit_index, "기동방식"] = edit_기동
-                    df.loc[edit_index, "고장현상"] = edit_고장
-                    df.loc[edit_index, "조치내역"] = edit_조치
-                    df.loc[edit_index, "부동시간[Hr]"] = edit_부동
-                    df.loc[edit_index, "소요비용[천원]"] = edit_비용
-                    df.loc[edit_index, "정비자"] = edit_정비자
-                    df.loc[edit_index, "비고"] = edit_비고
+                    # 구글 시트는 엑셀처럼 1부터 시작하고 헤더가 1이므로 데이터 인덱스에 +2를 해야 정확한 행 번호가 됩니다.
+                    sheet_row_num = int(edit_index) + 2
                     
-                    conn.update(spreadsheet=spreadsheet_url, data=df)
-                    st.success("선택한 정비 기록 수정이 완료되었습니다!")
+                    # 수정한 내용을 리스트로 결합
+                    updated_row = [
+                        edit_공정, edit_세부, str(edit_일자), edit_분류, edit_설비명,
+                        edit_마력, edit_기동, edit_고장, edit_조치, edit_부동, edit_비용, edit_정비자, edit_비고
+                    ]
+                    
+                    # gspread 전용 특정 행 업데이트 명령 수행
+                    sheet.update(range_name=f"A{sheet_row_num}:M{sheet_row_num}", values=[updated_row])
+                    st.success("구글 클라우드에 수정 내용이 완벽하게 반영되었습니다!")
                     st.rerun()
 
     # [삭제 기능]
@@ -255,9 +252,10 @@ if is_admin:
         if not df.empty:
             delete_index = st.selectbox("삭제할 이력 선택", df.index, format_func=lambda x: f"[{x}] {df.iloc[x]['설비명']} ({df.iloc[x]['정비일자']})")
             if st.button("🗑️ 선택한 정비 이력 영구 삭제"):
-                updated_df = df.drop(delete_index).reset_index(drop=True)
-                conn.update(spreadsheet=spreadsheet_url, data=updated_df)
-                st.success("데이터가 완벽하게 제거되었습니다.")
+                sheet_row_num = int(delete_index) + 2
+                # gspread 전용 행 삭제 함수 호출
+                sheet.delete_rows(sheet_row_num)
+                st.success("데이터가 구글 클라우드에서 영구 제거되었습니다.")
                 st.rerun()
 else:
     st.warning("🔒 데이터 관리 기능을 사용하시려면 왼쪽 사이드바에 패스워드를 입력해 주세요.")
